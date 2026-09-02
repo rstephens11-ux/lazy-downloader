@@ -53,7 +53,7 @@ macOS's system Python (`/usr/bin/python3`) ships **Tk 8.5** — a 2007-era GUI t
 ## Icon
 
 - `make_icon.py` — programmatically generates the *download-arrow* icon (pure Python, no image libraries needed)
-- The *monkey-at-keyboard* icon is AI-generated (no script; the raw PNG is not committed)
+- `assets/monkey-icon.png` — the *monkey-at-keyboard* icon (AI-generated, 1024×1024). This is the icon currently used by the shipped app. Convert it to `.icns` and pass `--icon` to the build script to use it.
 
 ## License
 
