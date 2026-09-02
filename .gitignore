@@ -3,6 +3,9 @@ build/
 dist/
 *.spec
 
+# Generated icon (recreate with ./icon.sh)
+*.icns
+
 # macOS
 .DS_Store
 

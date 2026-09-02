@@ -5,13 +5,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-ICON="${ICON:-}"
-
-if [ -n "$ICON" ]; then
-  pyinstaller --windowed --name "Lazy Downloader" --icon "$ICON" --clean lazy_downloader.py
-else
-  pyinstaller --windowed --name "Lazy Downloader" --clean lazy_downloader.py
+# Build the .icns from the monkey PNG if it isn't there yet.
+ICON="assets/monkey-icon.icns"
+if [ ! -f "$ICON" ]; then
+  ./icon.sh
 fi
+
+pyinstaller --windowed --name "Lazy Downloader" --icon "$ICON" --clean lazy_downloader.py
 
 echo ""
 echo "Built: dist/Lazy Downloader.app"
