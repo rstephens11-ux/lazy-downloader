@@ -90,12 +90,13 @@ class App:
         self._lines = [
             ("", FG),
             ("=" * 40, BORD),
-            ("       LAZY  DOWNLOADER  v1.1", ACC),
+            ("       LAZY  DOWNLOADER  v1.2", ACC),
             ("=" * 40, BORD),
             ("", FG),
             (" [1]  Video download          (yt-dlp)", FG),
             (" [2]  Audio download          (yt-dlp)", FG),
             (" [3]  Video CLIP download     (start/end)", FG),
+            (" [4]  Audio CLIP download     (start/end)", FG),
             ("", FG),
             (" [U]  Update yt-dlp", FG),
             (" [Q]  Quit", FG),
@@ -147,6 +148,10 @@ class App:
             self.mode = "url"; self.dltype = "clip"
             self.input_text = ""; self.clip_start = None; self.clip_end = None
             self._set_prompt("Paste video URL to clip: ")
+        elif c == "4":
+            self.mode = "url"; self.dltype = "aclip"
+            self.input_text = ""; self.clip_start = None; self.clip_end = None
+            self._set_prompt("Paste audio URL to clip: ")
         elif c == "U": self._update()
         elif c == "Q": self.root.destroy()
 
@@ -154,7 +159,7 @@ class App:
         if ev.keysym == "Return":
             if not self.input_text.strip():
                 self._redraw(); return
-            if self.dltype == "clip":
+            if self.dltype in ("clip", "aclip"):
                 self.url = self.input_text.strip()
                 self.input_text = ""
                 self.mode = "clip_start"
@@ -224,13 +229,14 @@ class App:
 
     def _download(self):
         # in the clip flow input_text holds the END time by now, so use the saved URL
-        url = self.url if self.dltype == "clip" else self.input_text.strip()
+        url = self.url if self.dltype in ("clip", "aclip") else self.input_text.strip()
         if not url: return
         self.url = url
         self.input_text = ""
         self.mode = "busy"
-        if self.dltype == "clip":
-            self._lines.append(("  CLIP %s \u2192 %s" % (
+        if self.dltype in ("clip", "aclip"):
+            self._lines.append(("  %s %s \u2192 %s" % (
+                "AUDIO CLIP" if self.dltype == "aclip" else "CLIP",
                 fmt_secs(self.clip_start),
                 "END of video" if self.clip_end is None else fmt_secs(self.clip_end)), MUT))
         self._set_prompt("Downloading...")
@@ -238,7 +244,8 @@ class App:
         threading.Thread(target=self._run_dl, args=(url,), daemon=True).start()
 
     def _run_dl(self, url):
-        if self.dltype == "clip":
+        video_fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        if self.dltype in ("clip", "aclip"):
             start = self.clip_start or 0.0
             end = self.clip_end
             # yt-dlp takes seconds; "inf" means "to the end of the video"
@@ -246,19 +253,18 @@ class App:
             tag = fmt_secs(start).replace(":", "-") + "_" + (
                 "end" if end is None else fmt_secs(end).replace(":", "-"))
             out = str(Path(self.dldir) / ("%(title)s [clip " + tag + "].%(ext)s"))
-            cmd = [self.ytdlp, "-f",
-                   "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                   "--download-sections", "*" + rng,
-                   "--force-keyframes-at-cuts",
-                   "-o", out, url]
-        elif self.dltype == "audio":
-            out = str(Path(self.dldir) / "%(title)s.%(ext)s")
-            cmd = [self.ytdlp, "-x", "--audio-format", "mp3", "-o", out, url]
+            # --force-keyframes-at-cuts re-encodes so the cut lands exactly. Audio needs
+            # it too: without it the cut snaps to the nearest video keyframe (measured
+            # 8.0s of audio for a 5.0s request).
+            cut = ["--download-sections", "*" + rng, "--force-keyframes-at-cuts"]
         else:
             out = str(Path(self.dldir) / "%(title)s.%(ext)s")
-            cmd = [self.ytdlp, "-f",
-                   "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                   "-o", out, url]
+            cut = []
+
+        if self.dltype in ("audio", "aclip"):
+            cmd = [self.ytdlp, "-x", "--audio-format", "mp3"] + cut + ["-o", out, url]
+        else:
+            cmd = [self.ytdlp, "-f", video_fmt] + cut + ["-o", out, url]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         except subprocess.TimeoutExpired:

@@ -11,6 +11,7 @@ Downloads video and audio from YouTube, Twitter/X, Substack, TikTok, and hundred
 - **Video download** — best available mp4 + m4a audio, merged to mp4
 - **Video clip download** — grab just a segment: give a start and end time and only that part is saved
 - **Audio download** — extracted and converted to mp3
+- **Audio clip download** — just a segment of the audio, saved as mp3
 - **Update yt-dlp** — refreshes the downloader from the menu (YouTube changes things often)
 - **Keyboard-driven** — type `1` or `2`, paste a URL (⌘V or right-click), Enter to download
 - **Green phosphor on black** — matches the classic terminal aesthetic
@@ -23,6 +24,7 @@ Launch the app, then:
  [1]  Video download          (yt-dlp)
  [2]  Audio download          (yt-dlp)
  [3]  Video CLIP download     (start/end)
+ [4]  Audio CLIP download     (start/end)
  [U]  Update yt-dlp
  [Q]  Quit
 ```
@@ -31,10 +33,12 @@ Press `1` or `2`, paste a URL, press Enter. Files land on your Desktop. `Esc` ca
 
 ### Cutting a clip
 
-Press `3`, paste a URL, press Enter — then it asks for the two times:
+Press `3` for a video clip or `4` for an audio clip, paste a URL, press Enter — then it
+asks for the two times:
 
 ```
-Paste video URL to clip: https://youtu.be/xxxxxxxxxxx
+Paste video URL to clip: https://youtu.be/xxxxxxxxxxx      ([3])
+Paste audio URL to clip: https://youtu.be/xxxxxxxxxxx      ([4])
 Clip START (mm:ss / h:mm:ss, ENTER = 0:00): 1:30
 Clip END (mm:ss / h:mm:ss, ENTER = to end): 2:45
 ```
@@ -55,10 +59,13 @@ The clip is saved next to the full downloads, with the range in the filename:
 
 ```
 Video Title [clip 0-01-30_0-02-45].mp4
+Video Title [clip 0-01-30_0-02-45].mp3     ([4] audio clips)
 ```
 
 Cuts are frame-accurate (`--force-keyframes-at-cuts`), which means ffmpeg re-encodes the
-segment — a clip takes a bit longer than the same amount of full-video download.
+segment — a clip takes a bit longer than the same amount of full-video download. Audio
+clips use the same flag: without it the cut snaps to the nearest video keyframe and you
+get extra audio (measured 8 seconds of audio for a 5-second request).
 
 ## Dependencies
 
