@@ -75,8 +75,28 @@ The app bundles its own Python + tkinter, but still needs two command-line tools
 brew install yt-dlp ffmpeg
 ```
 
-`ffmpeg` is needed for the audio-only (mp3) option and for clip downloads. The full
-video `[1]` option works without it.
+`ffmpeg` is needed by **all four** options: clips use it to cut, mp3 uses it to convert,
+and the full-video option uses it to merge the separate video and audio streams into one
+mp4.
+
+### Why the app has to tell yt-dlp where ffmpeg is
+
+macOS gives an app launched from the Dock or Finder a minimal `PATH`
+(`/usr/bin:/bin:/usr/sbin:/sbin`), so it cannot see anything Homebrew installed. yt-dlp
+looks for ffmpeg on `PATH`, and without finding it:
+
+- clip downloads abort with *"You have requested downloading the video partially, but
+  ffmpeg is not installed"*
+- mp3 conversion fails
+- full video downloads silently leave **two** unmerged files (`…​.f140.m4a` and
+  `…​.f395.mp4`) instead of one mp4
+
+So the app locates yt-dlp, ffmpeg and brew by absolute path rather than relying on `PATH`,
+passes `--ffmpeg-location` to yt-dlp, and gives subprocesses a `PATH` that includes
+`/opt/homebrew/bin`. Menu option `[U]` calls brew by full path for the same reason.
+
+If a tool is missing the menu says so at startup, and downloads refuse with
+`FAILED: missing ffmpeg — run: brew install ffmpeg` instead of half-succeeding.
 
 ## Building the standalone .app
 

@@ -1,11 +1,37 @@
 #!/opt/homebrew/bin/python3
-import subprocess, threading, tkinter as tk
+import os, subprocess, threading, tkinter as tk
 from pathlib import Path
 
-def find_ytdlp():
-    for p in ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"]:
-        if Path(p).exists(): return p
+# Homebrew lives here. An app launched from the Dock/Finder does NOT have these on its
+# PATH (it gets PATH=/usr/bin:/bin:/usr/sbin:/sbin), so nothing may be found by name.
+BREW_DIRS = ["/opt/homebrew/bin", "/usr/local/bin"]
+
+def _find(name):
+    for d in BREW_DIRS:
+        p = Path(d) / name
+        if p.exists(): return str(p)
     return None
+
+def find_ytdlp():
+    return _find("yt-dlp")
+
+def find_ffmpeg():
+    """yt-dlp wants the DIRECTORY containing ffmpeg/ffprobe, not the binary."""
+    p = _find("ffmpeg")
+    return str(Path(p).parent) if p else None
+
+def find_brew():
+    return _find("brew")
+
+def child_env():
+    """Give subprocesses a PATH that can see Homebrew, whatever ours looks like."""
+    env = dict(os.environ)
+    parts = [p for p in env.get("PATH", "").split(":") if p]
+    for d in reversed(BREW_DIRS):
+        if d not in parts:
+            parts.insert(0, d)
+    env["PATH"] = ":".join(parts)
+    return env
 
 def parse_time(s):
     """'90' (secs), '1:30' (m:s) or '0:01:30.5' (h:m:s) -> seconds. None if not a time."""
@@ -60,6 +86,9 @@ class App:
         self.root.configure(bg=BG)
 
         self.ytdlp = find_ytdlp()
+        self.ffmpeg = find_ffmpeg()
+        self.brew = find_brew()
+        self.env = child_env()
         self.dldir = str(Path.home() / "Desktop")
 
         self.mode = "menu"
@@ -90,7 +119,7 @@ class App:
         self._lines = [
             ("", FG),
             ("=" * 40, BORD),
-            ("       LAZY  DOWNLOADER  v1.2", ACC),
+            ("       LAZY  DOWNLOADER  v1.3", ACC),
             ("=" * 40, BORD),
             ("", FG),
             (" [1]  Video download          (yt-dlp)", FG),
@@ -101,8 +130,15 @@ class App:
             (" [U]  Update yt-dlp", FG),
             (" [Q]  Quit", FG),
             ("", FG),
-            ("-" * 40, BORD),
         ]
+        missing = self._missing_tools()
+        if missing:
+            self._lines += [
+                (" ! missing: " + ", ".join(missing), ERR),
+                ("   fix:  brew install " + " ".join(missing), ERR),
+                ("", FG),
+            ]
+        self._lines.append(("-" * 40, BORD))
         self._set_prompt("Pick: ")
         self._redraw()
         self._blink()
@@ -231,6 +267,13 @@ class App:
         # in the clip flow input_text holds the END time by now, so use the saved URL
         url = self.url if self.dltype in ("clip", "aclip") else self.input_text.strip()
         if not url: return
+        miss = self._missing_tools()
+        if miss:
+            self._flash("  FAILED: missing %s \u2014 run: brew install %s"
+                        % (", ".join(miss), " ".join(miss)), ERR)
+            self._to_menu()
+            self._redraw()
+            return
         self.url = url
         self.input_text = ""
         self.mode = "busy"
@@ -243,7 +286,25 @@ class App:
         self._redraw()
         threading.Thread(target=self._run_dl, args=(url,), daemon=True).start()
 
+    def _missing_tools(self):
+        """Required tools that aren't installed. Every option needs ffmpeg: clips to cut,
+        mp3 to convert, and plain video to merge the separate audio/video streams."""
+        return [n for n, p in (("yt-dlp", self.ytdlp), ("ffmpeg", self.ffmpeg)) if not p]
+
+    def _tool_prefix(self):
+        """argv[0] plus where ffmpeg is, since a Dock-launched app has no Homebrew PATH.
+        None if a tool is actually missing."""
+        if not self.ytdlp:
+            return None
+        prefix = [self.ytdlp]
+        if self.ffmpeg:
+            prefix += ["--ffmpeg-location", self.ffmpeg]
+        return prefix
+
     def _run_dl(self, url):
+        prefix = self._tool_prefix()
+        if prefix is None:
+            self.root.after(0, self._done, "  FAILED: yt-dlp not found", ERR); return
         video_fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
         if self.dltype in ("clip", "aclip"):
             start = self.clip_start or 0.0
@@ -262,11 +323,12 @@ class App:
             cut = []
 
         if self.dltype in ("audio", "aclip"):
-            cmd = [self.ytdlp, "-x", "--audio-format", "mp3"] + cut + ["-o", out, url]
+            cmd = prefix + ["-x", "--audio-format", "mp3"] + cut + ["-o", out, url]
         else:
-            cmd = [self.ytdlp, "-f", video_fmt] + cut + ["-o", out, url]
+            cmd = prefix + ["-f", video_fmt] + cut + ["-o", out, url]
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600,
+                               env=self.env)
         except subprocess.TimeoutExpired:
             self.root.after(0, self._done, "  TIMEOUT", ERR); return
         except Exception as e:
@@ -292,8 +354,10 @@ class App:
 
     def _run_update(self):
         try:
-            r = subprocess.run(["brew", "upgrade", "yt-dlp"],
-                              capture_output=True, text=True, timeout=300)
+            # "brew" by bare name is not findable from a Dock-launched app
+            r = subprocess.run([self.brew or "brew", "upgrade", "yt-dlp"],
+                              capture_output=True, text=True, timeout=300,
+                              env=self.env)
         except Exception as e:
             self.root.after(0, self._up_done, "  ERROR: " + str(e), ERR); return
         if r.returncode == 0:
