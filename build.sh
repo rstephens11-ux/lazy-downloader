@@ -11,7 +11,9 @@ if [ ! -f "$ICON" ]; then
   ./icon.sh
 fi
 
-pyinstaller --windowed --name "Lazy Downloader" --icon "$ICON" --clean lazy_downloader.py
+# PyInstaller's --clean clears its cache, NOT the output dir, so a second build
+# always fails on a non-empty dist/. --noconfirm makes rebuilds work.
+pyinstaller --windowed --name "Lazy Downloader" --icon "$ICON" --clean --noconfirm lazy_downloader.py
 
 echo ""
 echo "Built: dist/Lazy Downloader.app"
