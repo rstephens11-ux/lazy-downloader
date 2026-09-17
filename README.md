@@ -9,6 +9,7 @@ Downloads video and audio from YouTube, Twitter/X, Substack, TikTok, and hundred
 ## Features
 
 - **Video download** — best available mp4 + m4a audio, merged to mp4
+- **Video clip download** — grab just a segment: give a start and end time and only that part is saved
 - **Audio download** — extracted and converted to mp3
 - **Update yt-dlp** — refreshes the downloader from the menu (YouTube changes things often)
 - **Keyboard-driven** — type `1` or `2`, paste a URL (⌘V or right-click), Enter to download
@@ -21,11 +22,43 @@ Launch the app, then:
 ```
  [1]  Video download          (yt-dlp)
  [2]  Audio download          (yt-dlp)
+ [3]  Video CLIP download     (start/end)
  [U]  Update yt-dlp
  [Q]  Quit
 ```
 
 Press `1` or `2`, paste a URL, press Enter. Files land on your Desktop. `Esc` cancels back to the menu.
+
+### Cutting a clip
+
+Press `3`, paste a URL, press Enter — then it asks for the two times:
+
+```
+Paste video URL to clip: https://youtu.be/xxxxxxxxxxx
+Clip START (mm:ss / h:mm:ss, ENTER = 0:00): 1:30
+Clip END (mm:ss / h:mm:ss, ENTER = to end): 2:45
+```
+
+Times can be written three ways:
+
+| You type | Means |
+|---|---|
+| `90` | 90 seconds |
+| `1:30` | 1 min 30 sec |
+| `0:01:30.5` | 1 min 30.5 sec |
+
+Press Enter on the start prompt to begin at `0:00`, or on the end prompt to run to the
+end of the video. Bad input (e.g. `1:99` — minutes and seconds fields must be 0-59) is
+caught before anything downloads, and the text stays on screen for you to fix.
+
+The clip is saved next to the full downloads, with the range in the filename:
+
+```
+Video Title [clip 0-01-30_0-02-45].mp4
+```
+
+Cuts are frame-accurate (`--force-keyframes-at-cuts`), which means ffmpeg re-encodes the
+segment — a clip takes a bit longer than the same amount of full-video download.
 
 ## Dependencies
 
@@ -35,7 +68,8 @@ The app bundles its own Python + tkinter, but still needs two command-line tools
 brew install yt-dlp ffmpeg
 ```
 
-`ffmpeg` is only needed for the audio-only (mp3) option.
+`ffmpeg` is needed for the audio-only (mp3) option and for clip downloads. The full
+video `[1]` option works without it.
 
 ## Building the standalone .app
 
