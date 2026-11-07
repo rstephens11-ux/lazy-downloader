@@ -12,6 +12,7 @@ Downloads video and audio from YouTube, Twitter/X, Substack, TikTok, and hundred
 - **Video clip download** — grab just a segment: give a start and end time and only that part is saved
 - **Audio download** — extracted and converted to mp3
 - **Audio clip download** — just a segment of the audio, saved as mp3
+- **Save a tweet** — paste a tweet link and its text, photos and videos are saved to `~/Saved Tweets/`, searchable with Spotlight
 - **Update yt-dlp** — refreshes the downloader from the menu (YouTube changes things often)
 - **Keyboard-driven** — type `1` or `2`, paste a URL (⌘V or right-click), Enter to download
 - **Green phosphor on black** — matches the classic terminal aesthetic
@@ -25,6 +26,7 @@ Launch the app, then:
  [2]  Audio download          (yt-dlp)
  [3]  Video CLIP download     (start/end)
  [4]  Audio CLIP download     (start/end)
+ [5]  Save a TWEET            (text + media)
  [U]  Update yt-dlp
  [Q]  Quit
 ```
@@ -67,9 +69,43 @@ segment — a clip takes a bit longer than the same amount of full-video downloa
 clips use the same flag: without it the cut snaps to the nearest video keyframe and you
 get extra audio (measured 8 seconds of audio for a 5-second request).
 
+### Saving a tweet
+
+Press `5`, paste a tweet link (x.com, twitter.com, fxtwitter, vxtwitter — `?s=20` and
+`/photo/1` tails are fine), press Enter. Each tweet gets its own folder in
+`~/Saved Tweets/`:
+
+```
+~/Saved Tweets/
+  2014-03-02 @TheEllenShow - If only Bradley's arm was longer. Best photo ever. #oscars/
+    2014-03-02 @TheEllenShow - If only Bradley's arm was longer. Best photo ever. #oscars.md
+    photo-1.jpg
+    .tweet-440322224407314432.json      (hidden: everything the API returned)
+```
+
+The `.md` file is plain text: author, date, the full tweet (long posts included), any
+quoted tweet, image alt text, polls, link titles and a link back to the original.
+Photos are saved full size; videos at up to ~720p. Spotlight indexes the `.md`, so
+searching any phrase from a saved tweet finds it.
+
+- Saving the same tweet twice says `ALREADY SAVED` and changes nothing.
+- A deleted or private tweet fails with a plain message, and nothing is written.
+- One media file failing (or being over 400 MB) doesn't cancel the save; the note
+  keeps its link instead.
+
+This uses the free public [FxTwitter API](https://docs.fxembed.com/api/introduction/)
+— no X account, API key or cost, and no yt-dlp or ffmpeg. It's unofficial, so it could
+stop working one day; saving a full local copy is the point. It can also be run
+without the window:
+
+```bash
+"/Applications/Lazy Downloader.app/Contents/MacOS/Lazy Downloader" --save-tweet URL [--into DIR]
+```
+
 ## Dependencies
 
-The app bundles its own Python + tkinter, but still needs two command-line tools installed:
+The app bundles its own Python + tkinter, but the video/audio options (1–4) still need
+two command-line tools installed (saving tweets needs neither):
 
 ```bash
 brew install yt-dlp ffmpeg

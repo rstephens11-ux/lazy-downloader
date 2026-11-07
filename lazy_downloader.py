@@ -1,6 +1,8 @@
 #!/opt/homebrew/bin/python3
-import os, subprocess, threading, tkinter as tk
+import os, subprocess, sys, threading, tkinter as tk
 from pathlib import Path
+
+import tweet_saver
 
 # Homebrew lives here. An app launched from the Dock/Finder does NOT have these on its
 # PATH (it gets PATH=/usr/bin:/bin:/usr/sbin:/sbin), so nothing may be found by name.
@@ -90,6 +92,7 @@ class App:
         self.brew = find_brew()
         self.env = child_env()
         self.dldir = str(Path.home() / "Desktop")
+        self.tweetdir = tweet_saver.DEFAULT_DIR   # ~/Saved Tweets
 
         self.mode = "menu"
         self.dltype = None
@@ -119,13 +122,14 @@ class App:
         self._lines = [
             ("", FG),
             ("=" * 40, BORD),
-            ("       LAZY  DOWNLOADER  v1.3", ACC),
+            ("       LAZY  DOWNLOADER  v1.4", ACC),
             ("=" * 40, BORD),
             ("", FG),
             (" [1]  Video download          (yt-dlp)", FG),
             (" [2]  Audio download          (yt-dlp)", FG),
             (" [3]  Video CLIP download     (start/end)", FG),
             (" [4]  Audio CLIP download     (start/end)", FG),
+            (" [5]  Save a TWEET            (text + media)", FG),
             ("", FG),
             (" [U]  Update yt-dlp", FG),
             (" [Q]  Quit", FG),
@@ -139,6 +143,7 @@ class App:
                 ("", FG),
             ]
         self._lines.append(("-" * 40, BORD))
+        self._nhead = len(self._lines)   # menu block; everything after is the result log
         self._set_prompt("Pick: ")
         self._redraw()
         self._blink()
@@ -148,10 +153,24 @@ class App:
         self._redraw()
         self.root.after(530, self._blink)
 
+    def _visible_lines(self):
+        """Menu + as much of the NEWEST log as fits. Without this the log grows forever
+        and pushes the prompt off the bottom of the window after a handful of jobs."""
+        h = self.c.winfo_height()
+        head = getattr(self, "_nhead", 0)
+        if h < 100 or len(self._lines) <= head:
+            return self._lines
+        room = (h - 16 - 4 - 30) // 22          # rows left above the prompt
+        keep = max(1, room - head)
+        log = self._lines[head:]
+        if len(log) <= keep:
+            return self._lines
+        return self._lines[:head] + log[-keep:]
+
     def _redraw(self):
         self.c.delete("all")
         y = 16
-        for text, color in self._lines:
+        for text, color in self._visible_lines():
             self.c.create_text(18, y, text=text, fill=color,
                                font=("Courier", 13), anchor="nw")
             y += 22
@@ -188,6 +207,10 @@ class App:
             self.mode = "url"; self.dltype = "aclip"
             self.input_text = ""; self.clip_start = None; self.clip_end = None
             self._set_prompt("Paste audio URL to clip: ")
+        elif c == "5":
+            self.mode = "url"; self.dltype = "tweet"
+            self.input_text = ""
+            self._set_prompt("Paste tweet link: ")
         elif c == "U": self._update()
         elif c == "Q": self.root.destroy()
 
@@ -200,6 +223,8 @@ class App:
                 self.input_text = ""
                 self.mode = "clip_start"
                 self._set_prompt("Clip START (mm:ss / h:mm:ss, ENTER = 0:00): ")
+            elif self.dltype == "tweet":
+                self._save_tweet()
             else:
                 self._download()
         elif ev.keysym == "Escape":
@@ -345,6 +370,45 @@ class App:
         self._to_menu()
         self._redraw()
 
+    # ── [5] Save a tweet ── no yt-dlp/ffmpeg needed: tweet_saver fetches the text and
+    # media itself from the free FxTwitter API and writes them to ~/Saved Tweets.
+    def _save_tweet(self):
+        url = self.input_text.strip()
+        self.input_text = ""
+        self.mode = "busy"
+        self._set_prompt("Saving tweet...")
+        self._redraw()
+        threading.Thread(target=self._run_tweet, args=(url,), daemon=True).start()
+
+    def _run_tweet(self, url):
+        try:
+            r = tweet_saver.save_tweet(url, self.tweetdir)
+        except tweet_saver.SaveError as e:
+            self.root.after(0, self._done, "  FAILED: " + str(e), ERR); return
+        except Exception as e:
+            self.root.after(0, self._done, "  ERROR: %s: %s" % (type(e).__name__, e), ERR); return
+        name = r["folder"].name
+        name = name if len(name) <= 66 else name[:65] + "\u2026"
+        if r["status"] == "already":
+            lines = [("  ALREADY SAVED \u2192 ~/%s/" % self.tweetdir.name, SUCC),
+                     ("    " + name, MUT)]
+        else:
+            bits = []
+            for k in ("photos", "videos"):
+                if r[k]:
+                    bits.append("%d %s" % (r[k], k[:-1] if r[k] == 1 else k))
+            lines = [("  SAVED%s \u2192 ~/%s/" % (" (%s)" % ", ".join(bits) if bits else "",
+                                                 self.tweetdir.name), SUCC),
+                     ("    " + name, MUT)]
+            for fname, why in r["failed"]:
+                lines.append(("  ! skipped %s: %s (link kept in the note)" % (fname, why), ERR))
+        self.root.after(0, self._done_lines, lines)
+
+    def _done_lines(self, lines):
+        self._lines += lines
+        self._to_menu()
+        self._redraw()
+
     def _update(self):
         self.mode = "busy"
         self.input_text = ""
@@ -378,4 +442,8 @@ class App:
         self.root.mainloop()
 
 if __name__ == "__main__":
+    # Headless mode, also used to self-test the built .app:
+    #   "Lazy Downloader.app/Contents/MacOS/Lazy Downloader" --save-tweet URL [--into DIR]
+    if "--save-tweet" in sys.argv:
+        sys.exit(tweet_saver.main(sys.argv))
     App().run()
