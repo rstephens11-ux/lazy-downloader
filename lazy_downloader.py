@@ -1,4 +1,4 @@
-#!/opt/homebrew/bin/python3
+#!/opt/homebrew/bin/python3.14
 import os, subprocess, sys, threading, tkinter as tk
 from pathlib import Path
 

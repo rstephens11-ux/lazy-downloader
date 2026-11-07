@@ -158,7 +158,7 @@ The `.app` lands in `dist/` — drag it to `/Applications` and your Dock.
 
 ### Why `python-tk`?
 
-macOS's system Python (`/usr/bin/python3`) ships **Tk 8.5** — a 2007-era GUI toolkit that can draw window frames but *not* text on modern macOS. The symptom is a blank window with only a title bar. Installing `python-tk@3.14` gives the Homebrew Python a modern **Tk 9.0**. The script's shebang points at `/opt/homebrew/bin/python3` for this reason.
+macOS's system Python (`/usr/bin/python3`) ships **Tk 8.5** — a 2007-era GUI toolkit that can draw window frames but *not* text on modern macOS. The symptom is a blank window with only a title bar. Installing `python-tk@3.14` gives the Homebrew Python a modern **Tk 9.0**. The script's shebang points at `/opt/homebrew/bin/python3.14` for this reason — pinned to 3.14 rather than plain `python3`, because Homebrew's `python3` has since moved to 3.15, which has no tkinter at all.
 
 ## Icon
 
