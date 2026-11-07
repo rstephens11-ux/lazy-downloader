@@ -387,7 +387,7 @@ class App:
             self.root.after(0, self._done, "  FAILED: " + str(e), ERR); return
         except Exception as e:
             self.root.after(0, self._done, "  ERROR: %s: %s" % (type(e).__name__, e), ERR); return
-        name = r["folder"].name
+        name = r["file"].stem
         name = name if len(name) <= 66 else name[:65] + "\u2026"
         if r["status"] == "already":
             lines = [("  ALREADY SAVED \u2192 ~/%s/" % self.tweetdir.name, SUCC),

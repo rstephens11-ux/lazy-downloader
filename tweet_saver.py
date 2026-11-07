@@ -5,17 +5,21 @@ Uses the free, public FxTwitter API (api.fxtwitter.com — the service behind th
 could break one day; that is exactly why each tweet is saved as a full local copy
 instead of a bookmark.
 
-Each tweet becomes one folder:
+Everything lives in ONE flat folder, one text note per tweet, named author-first so a
+name-sorted Finder window groups each author's tweets together, oldest first:
 
-    ~/Saved Tweets/2014-03-03 @TheEllenShow - If only Bradley's arm was longer/
-        2014-03-03 @TheEllenShow - If only Bradley's arm was longer.md   <- text, searchable
-        photo-1.jpg
-        .tweet-440322224407314432.json                                   <- raw data (hidden)
+    ~/Saved Tweets/
+        @NASA 2026-11-05 Flying high! Today, our X-59 quiet supersonic….md
+        @TheEllenShow 2014-03-02 If only Bradley's arm was longer….md
+        media/          <- every photo/video, named <handle>-<tweet id>-photo-1.jpg
+        .data/          <- hidden: raw API reply per tweet + the "already saved?" record
 
-The .md is named like its folder so Spotlight / Finder search results are readable.
-The hidden .json holds everything the API returned and doubles as the "already
-saved?" marker.
+Keyword search = Spotlight / Finder over the notes' text. Author search = the file
+name, plus Spotlight's Author field (set on each note, so `author:NASA` works).
 """
+import ctypes
+import ctypes.util
+import plistlib
 import datetime as _dt
 import json
 import os
@@ -148,8 +152,9 @@ def _fmt_dur(secs):
 
 
 def make_title(status):
-    """'2014-03-03 @TheEllenShow - If only Bradley's arm was longer' — safe as a
-    folder AND file name."""
+    """"@TheEllenShow 2014-03-02 If only Bradley's arm was longer…" — author first so
+    Finder's name sort groups by author, then date so each author's tweets run in
+    order. Safe as a file name."""
     d = _local(status.get("created_timestamp"))
     date = d.strftime("%Y-%m-%d") if d else "undated"
     handle = (status.get("author") or {}).get("screen_name") or "unknown"
@@ -166,7 +171,7 @@ def make_title(status):
         cut = text[:TITLE_CHARS]
         text = (cut.rsplit(" ", 1)[0] if " " in cut[20:] else cut).rstrip() + "…"
     text = text.strip(" .")  # macOS dislikes names ending in a dot
-    return "%s @%s - %s" % (date, handle, text)
+    return "@%s %s %s" % (handle, date, text)
 
 
 def _pick_video_url(item):
@@ -198,16 +203,18 @@ def _media_plan(status, prefix=""):
 
 
 def _media_md(plan, results):
+    """Links point into the shared media/ folder (names have no spaces, so plain
+    relative links work in any Markdown viewer)."""
     out = []
     for fname, url, kind, item in plan:
         err = results.get(fname)
         if kind == "photo":
-            out.append(("![%s](%s)" % (fname, fname)) if not err else
+            out.append(("![%s](media/%s)" % (fname, fname)) if not err else
                        "_(photo not saved: %s — %s)_" % (err, url))
         else:
             dur = _fmt_dur(item.get("duration"))
             label = "%s%s" % (fname, " (%s)" % dur if dur else "")
-            out.append(("[▶ %s](%s)" % (label, fname)) if not err else
+            out.append(("[▶ %s](media/%s)" % (label, fname)) if not err else
                        "_(video not saved: %s — %s)_" % (err, url))
         alt = item.get("altText") or item.get("alt_text")
         if alt:
@@ -304,17 +311,54 @@ def build_markdown(status, title, results, plan_main, plan_quote, saved_at):
 
 # ── the one call the app makes ───────────────────────────────────────────
 
+_LIBC = None
+
+
+def _set_spotlight_attr(path, attr, value):
+    """Write a Spotlight metadata attribute (e.g. kMDItemAuthors) the same way Safari
+    stamps 'Where from' on downloads: a binary-plist xattr. Best effort only — a
+    failure here must never fail the save."""
+    global _LIBC
+    try:
+        if _LIBC is None:
+            _LIBC = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        blob = plistlib.dumps(value, fmt=plistlib.FMT_BINARY)
+        _LIBC.setxattr(str(path).encode("utf-8"),
+                       ("com.apple.metadata:" + attr).encode("utf-8"),
+                       blob, ctypes.c_size_t(len(blob)), ctypes.c_uint32(0), ctypes.c_int(0))
+    except Exception:
+        pass
+
+
 def already_saved(tid, root):
-    hits = list(Path(root).glob("*/.tweet-%s.json" % tid))
-    return hits[0].parent if hits else None
+    """The note for this tweet if it's saved, else None. Deleting a note un-saves the
+    tweet, and renaming a note doesn't fool it (falls back to the ID inside)."""
+    root = Path(root)
+    rec = root / ".data" / ("%s.json" % tid)
+    if rec.exists():
+        try:
+            note = json.loads(rec.read_text(encoding="utf-8")).get("note")
+            if note and (root / note).exists():
+                return root / note
+        except Exception:
+            pass
+    needle = 'tweet_id: "%s"' % tid
+    for p in root.glob("*.md"):
+        try:
+            with open(p, encoding="utf-8", errors="ignore") as f:
+                if needle in f.read(300):
+                    return p
+        except OSError:
+            continue
+    return None
 
 
 def save_tweet(text, root=DEFAULT_DIR):
     """Save the tweet in `text` (a link or an ID) under `root`.
 
-    Returns a dict: {"status": "saved" | "already", "folder": Path, "photos": n,
-    "videos": n, "failed": [(filename, reason)]}. Raises SaveError for problems the
-    user should see verbatim.
+    Returns a dict: {"status": "saved" | "already", "file": Path (the .md note),
+    "photos": n, "videos": n, "failed": [(filename, reason)]}. Raises SaveError for
+    problems the user should see verbatim.
     """
     tid = tweet_id_from(text)
     if not tid:
@@ -323,24 +367,28 @@ def save_tweet(text, root=DEFAULT_DIR):
     root.mkdir(parents=True, exist_ok=True)
     prior = already_saved(tid, root)
     if prior:
-        return {"status": "already", "folder": prior, "photos": 0, "videos": 0, "failed": []}
+        return {"status": "already", "file": prior, "photos": 0, "videos": 0, "failed": []}
 
     data = fetch_tweet(tid)
     status = data["status"]
     title = make_title(status)
+    handle = (status.get("author") or {}).get("screen_name") or "unknown"
     saved_at = _dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    media_dir, data_dir = root / "media", root / ".data"
 
-    # Build in a hidden scratch folder, rename into place at the end — a crash or a
-    # dead network never leaves a half-saved tweet that looks "already saved".
+    # Download into a hidden scratch folder first; files only move into place once
+    # everything is in hand, and the note is written last — so a crash or a dead
+    # network never leaves a half-saved tweet behind.
     work = root / (".partial-%s" % tid)
     if work.exists():
         shutil.rmtree(work)
     work.mkdir()
     try:
-        plan_main = _media_plan(status)
+        base = "%s-%s-" % (handle, tid)        # media names: NASA-2118449337814352016-photo-1.jpg
+        plan_main = _media_plan(status, prefix=base)
         q = status.get("quote")
         quote = q if isinstance(q, dict) else {}
-        plan_quote = _media_plan(quote, prefix="quoted-") if quote.get("author") else []
+        plan_quote = _media_plan(quote, prefix=base + "quoted-") if quote.get("author") else []
         results, failed, n = {}, [], {"photo": 0, "video": 0}
         for fname, url, kind, _item in plan_main + plan_quote:
             try:
@@ -351,22 +399,34 @@ def save_tweet(text, root=DEFAULT_DIR):
             except Exception as e:  # one bad image must not sink the whole save
                 results[fname] = type(e).__name__; failed.append((fname, type(e).__name__))
 
-        md = build_markdown(status, title, results, plan_main, plan_quote, saved_at)
-        (work / (title + ".md")).write_text(md, encoding="utf-8")
-        (work / (".tweet-%s.json" % tid)).write_text(
-            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-
-        final = root / title
+        final = root / (title + ".md")
         k = 2
-        while final.exists():
-            final = root / ("%s (%d)" % (title, k)); k += 1
-        if final.name != title:  # keep the .md named like its folder
-            (work / (title + ".md")).rename(work / (final.name + ".md"))
-        work.rename(final)
-    except BaseException:
+        while final.exists():                  # same author, day and opening words
+            final = root / ("%s (%d).md" % (title, k)); k += 1
+        md = build_markdown(status, final.stem, results, plan_main, plan_quote, saved_at)
+        (work / "note.md").write_text(md, encoding="utf-8")
+
+        a = status.get("author") or {}
+        authors = ["@" + handle] + ([a["name"]] if a.get("name") else [])
+        _set_spotlight_attr(work / "note.md", "kMDItemAuthors", authors)
+        _set_spotlight_attr(work / "note.md", "kMDItemWhereFroms",
+                            [status.get("url") or "https://x.com/i/status/" + tid])
+
+        if any(p.name != "note.md" for p in work.iterdir()):
+            media_dir.mkdir(exist_ok=True)
+        for p in work.iterdir():
+            if p.name != "note.md":
+                os.replace(p, media_dir / p.name)
+        os.replace(work / "note.md", final)
+
+        data_dir.mkdir(exist_ok=True)
+        tmp = data_dir / (".%s.json.part" % tid)
+        tmp.write_text(json.dumps({"note": final.name, "saved": saved_at, "api": data},
+                                  indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, data_dir / ("%s.json" % tid))
+    finally:
         shutil.rmtree(work, ignore_errors=True)
-        raise
-    return {"status": "saved", "folder": final, "photos": n["photo"],
+    return {"status": "saved", "file": final, "photos": n["photo"],
             "videos": n["video"], "failed": failed}
 
 

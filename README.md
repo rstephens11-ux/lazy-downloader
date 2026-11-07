@@ -72,23 +72,36 @@ get extra audio (measured 8 seconds of audio for a 5-second request).
 ### Saving a tweet
 
 Press `5`, paste a tweet link (x.com, twitter.com, fxtwitter, vxtwitter — `?s=20` and
-`/photo/1` tails are fine), press Enter. Each tweet gets its own folder in
-`~/Saved Tweets/`:
+`/photo/1` tails are fine), press Enter. Every tweet becomes one text note in a single
+flat folder, `~/Saved Tweets/`, named author first:
 
 ```
 ~/Saved Tweets/
-  2014-03-02 @TheEllenShow - If only Bradley's arm was longer. Best photo ever. #oscars/
-    2014-03-02 @TheEllenShow - If only Bradley's arm was longer. Best photo ever. #oscars.md
-    photo-1.jpg
-    .tweet-440322224407314432.json      (hidden: everything the API returned)
+  @NASA 2026-11-05 Flying high! Today, our X-59 quiet supersonic X-59 aircraft….md
+  @NASA 2026-11-05 NASA astronaut @Astro_Anil and @CSA_ASC astronaut are now….md
+  @TheEllenShow 2014-03-02 If only Bradley's arm was longer. Best photo ever. #oscars.md
+  media/     every photo and video, e.g. NASA-2118449337814352016-photo-1.jpg
+  .data/     hidden: everything the API returned, one file per tweet
 ```
 
-The `.md` file is plain text: author, date, the full tweet (long posts included), any
-quoted tweet, image alt text, polls, link titles and a link back to the original.
-Photos are saved full size; videos at up to ~720p. Spotlight indexes the `.md`, so
-searching any phrase from a saved tweet finds it.
+The note is plain text: author, date, the full tweet (long posts included), any quoted
+tweet, image alt text, polls, link titles and a link back to the original. Photos are
+saved full size; videos at up to ~720p.
 
-- Saving the same tweet twice says `ALREADY SAVED` and changes nothing.
+**Searching** (Spotlight with ⌘Space, or the search box in a Finder window open on
+`Saved Tweets`):
+
+| Find | Type |
+|---|---|
+| a word or phrase | `supersonic` |
+| one author's tweets | `author:NASA` (or sort the folder by name: author comes first) |
+| both | `author:NASA supersonic` |
+
+`author:` works because each note's Spotlight *Author* field is set to the handle and
+display name. Words from a quoted tweet are searchable too.
+
+- Saving the same tweet twice says `ALREADY SAVED` and changes nothing. Delete a note
+  to un-save it.
 - A deleted or private tweet fails with a plain message, and nothing is written.
 - One media file failing (or being over 400 MB) doesn't cancel the save; the note
   keeps its link instead.
